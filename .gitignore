@@ -26,3 +26,7 @@ go.work.sum
 
 # built cmds
 /mvit
+/mvit.exe
+/ohttpd
+/ohttpd.exe
+/xsum.exe
