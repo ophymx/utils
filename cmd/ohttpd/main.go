@@ -10,6 +10,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/ophymx/utils/httplog"
 )
 
 var (
@@ -40,9 +42,18 @@ func init() {
 	}
 }
 
+func HasAnyPrefix(s string, prefixes []string) bool {
+	for _, prefix := range prefixes {
+		if strings.HasPrefix(s, prefix) {
+			return true
+		}
+	}
+	return false
+}
+
 // parseURI parses a URI string and returns a URL object.
 func parseURI(uri string) (u *url.URL, err error) {
-	if strings.HasPrefix(uri, "http://") || strings.HasPrefix(uri, "https://") || strings.HasPrefix(uri, "file://") {
+	if HasAnyPrefix(uri, []string{"http://", "https://", "file://"}) {
 		return url.Parse(uri)
 	}
 	if !filepath.IsAbs(uri) {
@@ -67,7 +78,10 @@ func (m *Mount) mount(mux *http.ServeMux) {
 	if m.Source.Scheme == "file" {
 		handler = http.FileServer(http.Dir(m.Source.Path))
 	} else {
-		handler = httputil.NewSingleHostReverseProxy(m.Source)
+		proxy := httputil.NewSingleHostReverseProxy(m.Source)
+		// Use logging transport for proxy requests
+		proxy.Transport = httplog.NewLoggingTransport()
+		handler = proxy
 	}
 	if m.Rewrite {
 		handler = http.StripPrefix(m.Path, handler)
@@ -194,14 +208,6 @@ func main() {
 	}
 }
 
-// logHandler logs HTTP requests and passes them to the next handler.
-func logHandler(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		log.Printf("%s %s", r.Method, r.URL)
-		next.ServeHTTP(w, r)
-	})
-}
-
 // serve starts the HTTP server with the given mounts.
 func serve(mounts map[string]*Mount) error {
 	// Create a new HTTP server
@@ -213,7 +219,7 @@ func serve(mounts map[string]*Mount) error {
 
 	server := &http.Server{
 		Addr:    listenFlag,
-		Handler: logHandler(mux),
+		Handler: httplog.LogHandler(mux),
 	}
 
 	log.Printf("Listening on %s", listenFlag)
