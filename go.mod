@@ -10,4 +10,4 @@ require (
 	github.com/pkg/xattr v0.4.10
 )
 
-require golang.org/x/sys v0.30.0 // indirect
+require golang.org/x/sys v0.34.0 // indirect
