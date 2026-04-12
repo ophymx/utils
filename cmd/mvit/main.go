@@ -21,7 +21,7 @@ import (
 	"strings"
 
 	"al.essio.dev/pkg/shellescape"
-	"github.com/ophymx/utils/txtedit"
+	"github.com/ophymx/utils/txtedit/v2"
 )
 
 // Flags for command-line options
@@ -165,7 +165,9 @@ func mvit(files []string) (err error) {
 	}
 
 	var edited string
-	edited, err = txtedit.EditTempFile(sb.String(), "mvit-*.txt")
+	cfg := txtedit.DefaultConfig()
+	cfg.Pattern = "mvit-*.txt"
+	edited, err = txtedit.EditString(sb.String(), cfg)
 	if err != nil {
 		return fmt.Errorf("error editing file: %w", err)
 	}
