@@ -1,14 +1,17 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"io"
 	"io/fs"
 	"log"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"strings"
+	"syscall"
 
 	"github.com/ophymx/utils/xsum"
 )
@@ -54,7 +57,7 @@ var writers = map[string]func(w io.Writer, algorithms []string) xsumWriter{
 	},
 }
 
-func doXsum(filenames []string, algorithms []string) (err error) {
+func doXsum(ctx context.Context, filenames []string, algorithms []string) (err error) {
 	newWriter, ok := writers[outputFlag]
 	if !ok {
 		return fmt.Errorf("unknown output format: %s", outputFlag)
@@ -95,7 +98,7 @@ func doXsum(filenames []string, algorithms []string) (err error) {
 	if cacheFlag {
 		cache = newXattrCache()
 	}
-	xsum.Parallel(srv, cache, uniq, func(filename string, sums map[string][]byte, err error) {
+	xsum.Parallel(ctx, srv, cache, uniq, func(filename string, sums map[string][]byte, err error) {
 		if e := writer.Write(hostname, filename, sizes[filename], sums, err); e != nil {
 			log.Panicln(e)
 		}
@@ -121,7 +124,10 @@ func main() {
 		os.Exit(2)
 	}
 
-	if err := doXsum(flag.Args(), strings.Split(algorithmFlag, ",")); err != nil {
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+
+	if err := doXsum(ctx, flag.Args(), strings.Split(algorithmFlag, ",")); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}

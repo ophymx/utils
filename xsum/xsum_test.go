@@ -1,7 +1,7 @@
-package xsum
 package xsum_test
 
 import (
+	"context"
 	"crypto/md5"
 	"crypto/sha1"
 	"crypto/sha256"
@@ -115,7 +115,7 @@ func TestSingleAlgoChunkedWrite(t *testing.T) {
 			h := srv.NewHash()
 			defer h.Close()
 
-			for _, chunk := range strings.Fields(input) {
+			for chunk := range strings.FieldsSeq(input) {
 				if _, err := h.Write([]byte(chunk)); err != nil {
 					t.Fatalf("Write: %v", err)
 				}
@@ -244,7 +244,7 @@ func TestParallelCorrectSums(t *testing.T) {
 	}
 	results := make(map[string]got)
 	var mu sync.Mutex
-	xsum.Parallel(srv, nil, files, func(filename string, sums map[string][]byte, err error) {
+	xsum.Parallel(context.Background(), srv, nil, files, func(filename string, sums map[string][]byte, err error) {
 		mu.Lock()
 		results[filename] = got{sums, err}
 		mu.Unlock()
@@ -276,7 +276,7 @@ func TestParallelCorrectSums(t *testing.T) {
 func TestParallelMissingFile(t *testing.T) {
 	srv := newServer(t, "sha256")
 	var gotErr error
-	xsum.Parallel(srv, nil, []string{"/nonexistent/file"}, func(_ string, _ map[string][]byte, err error) {
+	xsum.Parallel(context.Background(), srv, nil, []string{"/nonexistent/file"}, func(_ string, _ map[string][]byte, err error) {
 		gotErr = err
 	})
 	if gotErr == nil {
@@ -316,7 +316,7 @@ func TestParallelCacheMissPopulatesCache(t *testing.T) {
 	srv := newServer(t, "sha256")
 	cache := newMemCache()
 
-	xsum.Parallel(srv, cache, []string{path}, func(_ string, _ map[string][]byte, err error) {
+	xsum.Parallel(context.Background(), srv, cache, []string{path}, func(_ string, _ map[string][]byte, err error) {
 		if err != nil {
 			t.Errorf("unexpected error: %v", err)
 		}
@@ -339,7 +339,7 @@ func TestParallelCacheHitSkipsRecompute(t *testing.T) {
 	cache.data[path] = sentinel
 
 	var gotSums map[string][]byte
-	xsum.Parallel(srv, cache, []string{path}, func(_ string, sums map[string][]byte, err error) {
+	xsum.Parallel(context.Background(), srv, cache, []string{path}, func(_ string, sums map[string][]byte, err error) {
 		if err != nil {
 			t.Errorf("unexpected error: %v", err)
 		}
@@ -351,6 +351,29 @@ func TestParallelCacheHitSkipsRecompute(t *testing.T) {
 	}
 	if string(gotSums["sha256"]) != "sentinel-value" {
 		t.Error("cache hit did not return cached value")
+	}
+}
+
+func TestParallelContextCancellation(t *testing.T) {
+	// Write enough temp files to keep workers busy.
+	n := 20
+	files := make([]string, n)
+	for i := range n {
+		files[i] = writeTempFile(t, strings.Repeat("x", 1<<16))
+	}
+
+	srv := newServer(t, "sha256")
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // pre-cancel: producer should enqueue nothing
+
+	var count int
+	xsum.Parallel(ctx, srv, nil, files, func(_ string, _ map[string][]byte, _ error) {
+		count++
+	})
+
+	if count != 0 {
+		t.Errorf("expected 0 files processed after pre-cancellation, got %d", count)
 	}
 }
 

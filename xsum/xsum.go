@@ -1,6 +1,7 @@
 package xsum
 
 import (
+	"context"
 	"crypto/sha1"
 	"crypto/sha512"
 	"errors"
@@ -235,7 +236,8 @@ func numWorkers() int {
 
 // Parallel computes hash sums for multiple files concurrently.
 // If cache is non-nil it is consulted before hashing and updated after.
-func Parallel(srv Server, cache Cache, filenames []string, onResult OnResult) {
+// Workers stop between files if ctx is cancelled; in-progress file reads run to completion.
+func Parallel(ctx context.Context, srv Server, cache Cache, filenames []string, onResult OnResult) {
 	nw := numWorkers()
 
 	fileChan := make(chan string, nw)
@@ -243,10 +245,14 @@ func Parallel(srv Server, cache Cache, filenames []string, onResult OnResult) {
 	done := make(chan struct{})
 
 	go func() {
+		defer close(fileChan)
 		for _, filename := range filenames {
-			fileChan <- filename
+			select {
+			case <-ctx.Done():
+				return
+			case fileChan <- filename:
+			}
 		}
-		close(fileChan)
 	}()
 
 	go func() {
@@ -259,18 +265,26 @@ func Parallel(srv Server, cache Cache, filenames []string, onResult OnResult) {
 	var wg sync.WaitGroup
 	for range nw {
 		wg.Go(func() {
-			for filename := range fileChan {
-				if cache != nil {
-					if sums, err := cache.Get(filename); err == nil && len(sums) > 0 {
-						resultChan <- &result{filename, sums, nil}
-						continue
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case filename, ok := <-fileChan:
+					if !ok {
+						return
 					}
+					if cache != nil {
+						if sums, err := cache.Get(filename); err == nil && len(sums) > 0 {
+							resultChan <- &result{filename, sums, nil}
+							continue
+						}
+					}
+					sums, err := hashFile(filename, srv.NewHash())
+					if cache != nil && err == nil {
+						_ = cache.Set(filename, sums)
+					}
+					resultChan <- &result{filename, sums, err}
 				}
-				sums, err := hashFile(filename, srv.NewHash())
-				if cache != nil && err == nil {
-					_ = cache.Set(filename, sums)
-				}
-				resultChan <- &result{filename, sums, err}
 			}
 		})
 	}
