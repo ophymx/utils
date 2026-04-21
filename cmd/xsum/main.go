@@ -22,7 +22,7 @@ var (
 	algorithmFlag string
 )
 
-const version = "0.1"
+const version = "0.2"
 
 func init() {
 	flag.BoolVar(&helpFlag, "h", false, "Display help")
@@ -47,18 +47,11 @@ type xsumWriter interface {
 
 var writers = map[string]func(w io.Writer, algorithms []string) xsumWriter{
 	"json": func(w io.Writer, algorithms []string) xsumWriter {
-		return &jsonWriter{w}
+		return newJSONWriter(w)
 	},
 	"csv": func(w io.Writer, algorithms []string) xsumWriter {
 		return newCsvWriter(w, algorithms)
 	},
-}
-
-func cache() xsum.Cache {
-	if cacheFlag {
-		return newXattrCache()
-	}
-	return nil
 }
 
 func doXsum(filenames []string, algorithms []string) (err error) {
@@ -73,24 +66,36 @@ func doXsum(filenames []string, algorithms []string) (err error) {
 	if hostname, err = os.Hostname(); err != nil {
 		return
 	}
-	var sizes = make(map[string]int64, len(filenames))
-	for i, filename := range filenames {
+	seen := make(map[string]struct{}, len(filenames))
+	sizes := make(map[string]int64, len(filenames))
+	uniq := filenames[:0]
+	for _, filename := range filenames {
 		if filename, err = filepath.Abs(filename); err != nil {
 			return
 		}
-		filenames[i] = filename
+		if _, ok := seen[filename]; ok {
+			continue
+		}
+		seen[filename] = struct{}{}
 		var info fs.FileInfo
 		if info, err = os.Stat(filename); err != nil {
 			return
 		}
 		sizes[filename] = info.Size()
+		uniq = append(uniq, filename)
 	}
 
-	srv, err := xsum.NewServer(cache(), algorithms...)
+	srv, err := xsum.NewServer(algorithms...)
 	if err != nil {
 		return
 	}
-	srv.Parallel(filenames, func(filename string, sums map[string][]byte, err error) {
+	defer srv.Close()
+
+	var cache xsum.Cache
+	if cacheFlag {
+		cache = newXattrCache()
+	}
+	xsum.Parallel(srv, cache, uniq, func(filename string, sums map[string][]byte, err error) {
 		if e := writer.Write(hostname, filename, sizes[filename], sums, err); e != nil {
 			log.Panicln(e)
 		}

@@ -2,17 +2,20 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 )
 
 type jsonWriter struct {
-	writer io.Writer
+	enc *json.Encoder
+}
+
+func newJSONWriter(w io.Writer) *jsonWriter {
+	return &jsonWriter{enc: json.NewEncoder(w)}
 }
 
 // Close implements xsumWriter.
-func (*jsonWriter) Close() error {
-	return nil
-}
+func (*jsonWriter) Close() error { return nil }
 
 // Write implements xsumWriter.
 func (w *jsonWriter) Write(hostname string, filename string, size int64, sums map[string][]byte, err error) error {
@@ -25,10 +28,10 @@ func (w *jsonWriter) Write(hostname string, filename string, size int64, sums ma
 		data["error"] = err.Error()
 	} else {
 		for algorithm, sum := range sums {
-			data[algorithm+"sum"] = sum
+			data[algorithm+"sum"] = fmt.Sprintf("%x", sum)
 		}
 	}
-	return json.NewEncoder(w.writer).Encode(data)
+	return w.enc.Encode(data)
 }
 
 var _ xsumWriter = new(jsonWriter)

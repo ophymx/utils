@@ -26,7 +26,9 @@ func (w *csvWriter) Write(hostname string, filename string, size int64, sums map
 		for _, algorithm := range w.algorithms {
 			headers = append(headers, algorithm+"sum")
 		}
-		w.writer.Write(headers)
+		if err := w.writer.Write(headers); err != nil {
+			return err
+		}
 		w.wroteHeaders = true
 	}
 
