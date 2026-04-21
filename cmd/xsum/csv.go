@@ -48,7 +48,11 @@ func (w *csvWriter) Write(hostname string, filename string, size int64, sums map
 		}
 	}
 
-	return w.writer.Write(data)
+	if err := w.writer.Write(data); err != nil {
+		return err
+	}
+	w.writer.Flush()
+	return w.writer.Error()
 }
 
 func newCsvWriter(w io.Writer, algorithms []string) *csvWriter {
