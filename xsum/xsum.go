@@ -124,10 +124,8 @@ func (srv *serverImpl) Parallel(filenames []string, onResult OnResult) {
 	}()
 
 	var wg sync.WaitGroup
-	for i := 0; i < numWorkers; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+	for range numWorkers {
+		wg.Go(func() {
 			for filename := range fileChan {
 				if srv.cache != nil {
 					if sums, err := srv.cache.Get(filename); err == nil {
@@ -150,7 +148,7 @@ func (srv *serverImpl) Parallel(filenames []string, onResult OnResult) {
 				}
 				resultChan <- &result{filename, sums, err}
 			}
-		}()
+		})
 	}
 	wg.Wait()
 	close(resultChan)

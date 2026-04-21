@@ -38,8 +38,8 @@ func (a *osXattr) List(path string) (keys []string, err error) {
 		prefix = a.ns + "."
 	}
 	for _, key := range allKeys {
-		if strings.HasPrefix(key, prefix) {
-			key = strings.TrimPrefix(key, prefix)
+		if after, ok := strings.CutPrefix(key, prefix); ok {
+			key = after
 			keys = append(keys, key)
 		}
 	}
@@ -103,8 +103,8 @@ func (a *osXattr) ListNS(path string) (namespaces []string, err error) {
 		prefix = a.ns + "."
 	}
 	for _, key := range keys {
-		if strings.HasPrefix(key, prefix) {
-			key = strings.TrimPrefix(key, prefix)
+		if after, ok := strings.CutPrefix(key, prefix); ok {
+			key = after
 			if parts := strings.SplitN(key, ".", 2); len(parts) == 2 {
 				namespaces = append(namespaces, parts[0])
 			}

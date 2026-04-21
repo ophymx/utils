@@ -84,7 +84,7 @@ func mvitFmt(total int) string {
 // parseRenames parses the edited contents and returns a map of index to new filenames.
 func parseRenames(maxIdx int, contents string) (map[int]string, error) {
 	renames := make(map[int]string)
-	for _, line := range strings.Split(strings.TrimSuffix(contents, "\n"), "\n") {
+	for line := range strings.SplitSeq(strings.TrimSuffix(contents, "\n"), "\n") {
 		if line == "" || strings.TrimLeft(line, " ")[0] == '#' {
 			continue
 		}
