@@ -208,6 +208,10 @@ type result struct {
 	err      error
 }
 
+var copyBufPool = sync.Pool{
+	New: func() any { b := make([]byte, 2*1024*1024); return &b },
+}
+
 func hashFile(filename string, h Hasher) (map[string][]byte, error) {
 	defer h.Close()
 	f, err := os.Open(filename)
@@ -215,7 +219,9 @@ func hashFile(filename string, h Hasher) (map[string][]byte, error) {
 		return nil, err
 	}
 	defer f.Close()
-	if _, err = io.Copy(h, f); err != nil {
+	buf := copyBufPool.Get().(*[]byte)
+	defer copyBufPool.Put(buf)
+	if _, err = io.CopyBuffer(h, f, *buf); err != nil {
 		return nil, err
 	}
 	return h.MultiSum(), nil
@@ -247,6 +253,11 @@ func Parallel(ctx context.Context, srv Server, cache Cache, filenames []string, 
 	go func() {
 		defer close(fileChan)
 		for _, filename := range filenames {
+			select {
+			case <-ctx.Done():
+				return
+			default:
+			}
 			select {
 			case <-ctx.Done():
 				return
